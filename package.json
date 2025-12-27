@@ -1,27 +1,28 @@
 {
-  "name": "campus-textbook-backend",
+  "name": "campus-market-backend",
   "version": "1.0.0",
-  "description": "校园二手教材交易平台后端",
-  "main": "app.js",
+  "description": "",
+  "main": "index.js",
   "scripts": {
-    "test-db": "node test-db.js",
-    "start": "node app.js",
-    "dev": "nodemon app.js"
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js"
   },
-  "keywords": [
-    "textbook",
-    "campus",
-    "marketplace"
-  ],
+  "keywords": [],
   "author": "",
-  "license": "MIT",
+  "license": "ISC",
+  "type": "commonjs",
   "dependencies": {
-    "sqlite3": "^5.1.7",
-    "express": "^4.18.2",
+    "better-sqlite3": "^12.5.0",
     "cors": "^2.8.5",
-    "jsonwebtoken": "^9.0.2"
+    "dayjs": "^1.11.19",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "express-validator": "^7.3.1",
+    "jsonwebtoken": "^9.0.3",
+    "lodash": "^4.17.21",
+    "winston": "^3.19.0"
   },
   "devDependencies": {
-    "nodemon": "^3.0.2"
+    "nodemon": "^3.1.11"
   }
 }
