@@ -35,9 +35,9 @@ class UserController {
       const userExist = db.prepare('SELECT id FROM user WHERE username = ?').get(username);
       
       if (userExist) {
-        return res.json(Response.error(1001, '用户名已被占用'));
+        return res.json(Response.success({ available: false }, '用户名已被占用'));
       }
-      return res.json(Response.success(null, '用户名可用'));
+      return res.json(Response.success({ available: true }, '用户名可用'));
     } catch (error) {
       return res.json(Response.error(500, '服务器查询失败'));
     }
