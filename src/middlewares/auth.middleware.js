@@ -10,9 +10,11 @@ const authMiddleware = (req, res, next) => {
     }
 
     const token = authHeader.substring(7); // 去掉 "Bearer " 这 7 个字符
-    
+     console.log('--- 保安正在检查 ---');
+    console.log('收到的 Token 前 10 位:', token.substring(0, 10));
     // 2. 验证 Token
     const decoded = JwtUtil.verifyToken(token);
+      console.log('验证结果:', decoded ? '成功' : '失败 (返回了 null)');
     if (!decoded) {
       return res.status(401).json(Response.error(401, 'Token 无效或已过期'));
     }
