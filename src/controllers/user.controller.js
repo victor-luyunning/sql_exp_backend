@@ -48,7 +48,7 @@ class UserController {
    */
   static async getProfile(req, res) {
     try {
-      const user = db.prepare('SELECT id, username, email, student_id, create_time FROM user WHERE id = ?').get(req.user.userId);
+      const user = db.prepare('SELECT id, username, email, student_id, grade, create_time FROM user WHERE id = ?').get(req.user.userId);
       return res.json(Response.success(user));
     } catch (error) {
       return res.json(Response.error(500, '获取失败'));
