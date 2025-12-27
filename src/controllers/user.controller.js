@@ -60,12 +60,68 @@ class UserController {
    */
   static async updateProfile(req, res) {
     try {
-      const { email, studentId } = req.body;
-      db.prepare('UPDATE user SET email = ?, student_id = ? WHERE id = ?')
-        .run(email, studentId, req.user.userId);
-      return res.json(Response.success({}, '信息更新成功'));
+      const userId = req.user.userId;
+      const { email, studentId, phone, avatar, department, grade } = req.body;
+
+      // 1. 检查用户是否存在
+      const user = db.prepare('SELECT id FROM user WHERE id = ?').get(userId);
+      if (!user) {
+        return res.json(Response.error(1004, '用户不存在'));
+      }
+
+      // 2. 构建更新 SQL（只更新传入的字段）
+      const updateFields = [];
+      const updateValues = [];
+
+      if (email !== undefined) {
+        updateFields.push('email = ?');
+        updateValues.push(email);
+      }
+      if (studentId !== undefined) {
+        updateFields.push('student_id = ?');
+        updateValues.push(studentId);
+      }
+      if (phone !== undefined) {
+        updateFields.push('phone = ?');
+        updateValues.push(phone);
+      }
+      if (avatar !== undefined) {
+        updateFields.push('avatar = ?');
+        updateValues.push(avatar);
+      }
+      if (department !== undefined) {
+        updateFields.push('department = ?');
+        updateValues.push(department);
+      }
+      if (grade !== undefined) {
+        updateFields.push('grade = ?');
+        updateValues.push(grade);
+      }
+
+      // 如果没有任何字段需要更新
+      if (updateFields.length === 0) {
+        return res.json(Response.error(1005, '没有提供需要更新的字段'));
+      }
+
+      // 添加更新时间
+      updateFields.push("update_time = datetime('now', 'localtime')");
+
+      // 3. 执行更新
+      updateValues.push(userId); // 添加 WHERE 条件的参数
+      const sql = `UPDATE user SET ${updateFields.join(', ')} WHERE id = ?`;
+      
+      const stmt = db.prepare(sql);
+      stmt.run(...updateValues);
+
+      // 4. 返回更新后的用户信息
+      const updatedUser = db.prepare(
+        'SELECT id, username, email, student_id, phone, avatar, department, grade FROM user WHERE id = ?'
+      ).get(userId);
+
+      return res.json(Response.success(updatedUser, '用户信息更新成功'));
     } catch (error) {
-      return res.json(Response.error(500, '更新失败'));
+      console.error('更新用户信息失败:', error);
+      return res.json(Response.error(500, '服务器内部错误: ' + error.message));
     }
   }
 
