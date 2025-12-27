@@ -89,17 +89,12 @@ class AuthController {
   }
 
   /**
-   * 退出登录
+   * 用户登出
    */
   static async logout(req, res) {
-    try {
-      // JWT 是无状态的，退出登录主要由前端清除 token
-      // 后端这里只是返回一个成功的响应
-      return res.json(Response.success(null, '退出登录成功'));
-    } catch (error) {
-      console.error('退出登录失败:', error);
-      return res.json(Response.error(500, '服务器内部错误'));
-    }
+    // 目前使用 JWT Token 无状态认证，服务器端无需特殊处理
+    // 前端清除本地存储的 Token 即可
+    return res.json(Response.success({}, '登出成功'));
   }
 }
 

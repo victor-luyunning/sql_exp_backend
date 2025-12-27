@@ -11,7 +11,7 @@ router.use(authMiddleware);
 
 router.get('/me', UserController.getMe);
 router.get('/profile', UserController.getProfile);
-router.put('/update', UserController.updateProfile);
+router.put('/profile', UserController.updateProfile);
 router.post('/change-password', UserController.changePassword);
 
 module.exports = router;
