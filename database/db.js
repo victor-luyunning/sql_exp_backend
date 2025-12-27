@@ -1,4 +1,4 @@
-const Database = require('better-sqlite3');
+const sqlite3 = require('sqlite3').verbose();
 const fs = require('fs');
 const path = require('path');
 
@@ -14,37 +14,92 @@ if (!fs.existsSync(dataDir)) {
   console.log('✅ 创建data目录');
 }
 
-// 连接数据库（如果不存在会自动创建）
-const db = new Database(DB_PATH);
+let db = null;
 
-// 启用外键约束（SQLite默认关闭，必须手动开启）
-db.pragma('foreign_keys = ON');
+// 初始化数据库连接
+function initDB() {
+  return new Promise((resolve, reject) => {
+    db = new sqlite3.Database(DB_PATH, (err) => {
+      if (err) {
+        console.error('❌ 数据库连接失败:', err.message);
+        reject(err);
+      } else {
+        console.log('📦 数据库连接成功:', DB_PATH);
+        // 启用外键约束
+        db.run('PRAGMA foreign_keys = ON', (err) => {
+          if (err) reject(err);
+          else resolve(db);
+        });
+      }
+    });
+  });
+}
 
-console.log('📦 数据库连接成功:', DB_PATH);
+// 工具函数：将sqlite3回调转为Promise
+function runAsync(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.run(sql, params, function(err) {
+      if (err) reject(err);
+      else resolve({ lastID: this.lastID, changes: this.changes });
+    });
+  });
+}
+
+function getAsync(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.get(sql, params, (err, row) => {
+      if (err) reject(err);
+      else resolve(row);
+    });
+  });
+}
+
+function allAsync(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.all(sql, params, (err, rows) => {
+      if (err) reject(err);
+      else resolve(rows);
+    });
+  });
+}
+
+function execAsync(sql) {
+  return new Promise((resolve, reject) => {
+    db.exec(sql, (err) => {
+      if (err) reject(err);
+      else resolve();
+    });
+  });
+}
 
 /**
  * 初始化数据库
  * 执行建表脚本和测试数据脚本
  */
-function initDatabase() {
+async function initDatabase() {
   console.log('🔧 开始初始化数据库...');
 
   try {
+    // 先初始化数据库连接
+    if (!db) {
+      await initDB();
+    }
+
     // 检查user表是否存在
-    const tableExists = db.prepare(
+    const tableExists = await getAsync(
       "SELECT name FROM sqlite_master WHERE type='table' AND name='user'"
-    ).get();
+    );
 
     if (!tableExists) {
       console.log('📝 执行建表脚本 (schema.sql)...');
       const schema = fs.readFileSync(SCHEMA_PATH, 'utf8');
-      db.exec(schema);
+      await execAsync(schema);
       console.log('✅ 数据表创建成功');
 
       // 插入测试数据
       console.log('📝 执行测试数据脚本 (seed.sql)...');
       const seed = fs.readFileSync(SEED_PATH, 'utf8');
-      db.exec(seed);
+      await execAsync(seed);
       console.log('✅ 测试数据插入成功');
       
       console.log('🎉 数据库初始化完成！');
@@ -60,41 +115,39 @@ function initDatabase() {
 /**
  * 查询所有用户
  */
-function getAllUsers() {
-  return db.prepare('SELECT * FROM user WHERE deleted = 0').all();
+async function getAllUsers() {
+  return await allAsync('SELECT * FROM user WHERE deleted = 0');
 }
 
 /**
  * 根据ID查询用户
  */
-function getUserById(id) {
-  return db.prepare('SELECT * FROM user WHERE id = ? AND deleted = 0').get(id);
+async function getUserById(id) {
+  return await getAsync('SELECT * FROM user WHERE id = ? AND deleted = 0', [id]);
 }
 
 /**
  * 根据用户名查询用户
  */
-function getUserByUsername(username) {
-  return db.prepare('SELECT * FROM user WHERE username = ? AND deleted = 0').get(username);
+async function getUserByUsername(username) {
+  return await getAsync('SELECT * FROM user WHERE username = ? AND deleted = 0', [username]);
 }
 
 /**
  * 根据邮箱查询用户
  */
-function getUserByEmail(email) {
-  return db.prepare('SELECT * FROM user WHERE email = ? AND deleted = 0').get(email);
+async function getUserByEmail(email) {
+  return await getAsync('SELECT * FROM user WHERE email = ? AND deleted = 0', [email]);
 }
 
 /**
  * 创建用户
  */
-function createUser(userData) {
-  const stmt = db.prepare(`
+async function createUser(userData) {
+  const result = await runAsync(`
     INSERT INTO user (username, password, salt, email, student_id, phone, avatar, department, grade, balance)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  
-  const result = stmt.run(
+  `, [
     userData.username,
     userData.password,
     userData.salt,
@@ -105,39 +158,38 @@ function createUser(userData) {
     userData.department || null,
     userData.grade || null,
     userData.balance || 0.00
-  );
+  ]);
   
-  return result.lastInsertRowid;
+  return result.lastID;
 }
 
 /**
  * 获取用户余额
  */
-function getUserBalance(userId) {
-  const result = db.prepare('SELECT balance FROM user WHERE id = ? AND deleted = 0').get(userId);
+async function getUserBalance(userId) {
+  const result = await getAsync('SELECT balance FROM user WHERE id = ? AND deleted = 0', [userId]);
   return result ? result.balance : 0;
 }
 
 /**
  * 更新用户余额
  */
-function updateUserBalance(userId, amount) {
-  const stmt = db.prepare('UPDATE user SET balance = balance + ? WHERE id = ?');
-  return stmt.run(amount, userId);
+async function updateUserBalance(userId, amount) {
+  return await runAsync('UPDATE user SET balance = balance + ? WHERE id = ?', [amount, userId]);
 }
 
 /**
  * 检查余额是否足够
  */
-function checkBalance(userId, requiredAmount) {
-  const balance = getUserBalance(userId);
+async function checkBalance(userId, requiredAmount) {
+  const balance = await getUserBalance(userId);
   return balance >= requiredAmount;
 }
 
 /**
  * 搜索教材
  */
-function searchBooks(params) {
+async function searchBooks(params) {
   let sql = `
     SELECT 
       b.*,
@@ -209,7 +261,7 @@ function searchBooks(params) {
   sql += ` LIMIT ? OFFSET ?`;
   values.push(pageSize, offset);
 
-  const books = db.prepare(sql).all(...values);
+  const books = await allAsync(sql, values);
 
   // 获取总数
   let countSql = `
@@ -221,22 +273,22 @@ function searchBooks(params) {
     countSql += ' AND ' + conditions.join(' AND ');
   }
   const countValues = values.slice(0, -2); // 移除LIMIT和OFFSET的值
-  const { total } = db.prepare(countSql).get(...countValues);
+  const countResult = await getAsync(countSql, countValues);
 
   return {
     records: books,
-    total,
+    total: countResult.total,
     pageNum,
     pageSize,
-    totalPages: Math.ceil(total / pageSize)
+    totalPages: Math.ceil(countResult.total / pageSize)
   };
 }
 
 /**
  * 根据ID获取教材详情
  */
-function getBookById(id) {
-  return db.prepare(`
+async function getBookById(id) {
+  return await getAsync(`
     SELECT 
       b.*,
       u.id AS seller_id,
@@ -247,14 +299,14 @@ function getBookById(id) {
     FROM book b
     LEFT JOIN user u ON b.seller_id = u.id
     WHERE b.id = ? AND b.deleted = 0
-  `).get(id);
+  `, [id]);
 }
 
 /**
  * 获取最新发布的教材
  */
-function getLatestBooks(limit = 8) {
-  return db.prepare(`
+async function getLatestBooks(limit = 8) {
+  return await allAsync(`
     SELECT 
       b.*,
       u.username AS seller_name,
@@ -264,21 +316,21 @@ function getLatestBooks(limit = 8) {
     WHERE b.deleted = 0 AND b.status = 'ON_SALE'
     ORDER BY b.create_time DESC
     LIMIT ?
-  `).all(limit);
+  `, [limit]);
 }
 
 /**
  * 验证购物车商品
  */
-function validateCartItems(items) {
+async function validateCartItems(items) {
   const bookIds = items.map(item => item.bookId);
   const placeholders = bookIds.map(() => '?').join(',');
   
-  const books = db.prepare(`
+  const books = await allAsync(`
     SELECT id, title, author, isbn, price, condition, stock, status
     FROM book
     WHERE id IN (${placeholders}) AND deleted = 0
-  `).all(...bookIds);
+  `, bookIds);
 
   const invalidItems = [];
   const validItems = books.map(book => {
@@ -309,86 +361,91 @@ function validateCartItems(items) {
 /**
  * 创建订单（使用事务+余额扫款）
  */
-function createOrder(orderData) {
-  // 使用事务确保原子性
-  const transaction = db.transaction((data) => {
-    // 1. 检查用户余额
-    const balance = getUserBalance(data.userId);
-    if (balance < data.totalAmount) {
-      throw new Error(`余额不足，当前余额: ${balance}元，需要: ${data.totalAmount}元`);
-    }
+async function createOrder(orderData) {
+  return new Promise((resolve, reject) => {
+    db.serialize(async () => {
+      try {
+        // 开启事务
+        await runAsync('BEGIN TRANSACTION');
 
-    // 2. 创建订单
-    const orderStmt = db.prepare(`
-      INSERT INTO "order" (order_no, user_id, total_amount, status, building, room, phone, payment_type)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    
-    const orderResult = orderStmt.run(
-      data.orderNo,
-      data.userId,
-      data.totalAmount,
-      data.status || 'PENDING_PAYMENT',
-      data.address.building,
-      data.address.room,
-      data.address.phone,
-      data.payment.type
-    );
-    
-    const orderId = orderResult.lastInsertRowid;
+        // 1. 检查用户余额
+        const balance = await getUserBalance(orderData.userId);
+        if (balance < orderData.totalAmount) {
+          throw new Error(`余额不足，当前余额: ${balance}元，需要: ${orderData.totalAmount}元`);
+        }
 
-    // 3. 插入订单项
-    const itemStmt = db.prepare(`
-      INSERT INTO order_item (order_id, book_id, book_title, book_author, book_isbn, book_cover, price, quantity, seller_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+        // 2. 创建订单
+        const orderResult = await runAsync(`
+          INSERT INTO "order" (order_no, user_id, total_amount, status, building, room, phone, payment_type)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+          orderData.orderNo,
+          orderData.userId,
+          orderData.totalAmount,
+          orderData.status || 'PENDING_PAYMENT',
+          orderData.address.building,
+          orderData.address.room,
+          orderData.address.phone,
+          orderData.payment.type
+        ]);
+        
+        const orderId = orderResult.lastID;
 
-    data.items.forEach(item => {
-      const book = getBookById(item.bookId);
-      if (!book) {
-        throw new Error(`教材不存在: ${item.bookId}`);
+        // 3. 插入订单项
+        for (const item of orderData.items) {
+          const book = await getBookById(item.bookId);
+          if (!book) {
+            throw new Error(`教材不存在: ${item.bookId}`);
+          }
+          if (book.status !== 'ON_SALE') {
+            throw new Error(`教材已售出: ${book.title}`);
+          }
+
+          await runAsync(`
+            INSERT INTO order_item (order_id, book_id, book_title, book_author, book_isbn, book_cover, price, quantity, seller_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `, [
+            orderId,
+            book.id,
+            book.title,
+            book.author,
+            book.isbn,
+            book.cover_image,
+            book.price,
+            1,
+            book.seller_id
+          ]);
+
+          // 4. 更新教材状态为已售出
+          await runAsync('UPDATE book SET status = ?, stock = 0 WHERE id = ?', ['SOLD_OUT', book.id]);
+          
+          // 5. 给卖家增加余额
+          await updateUserBalance(book.seller_id, book.price);
+        }
+
+        // 6. 扣除买家余额
+        await updateUserBalance(orderData.userId, -orderData.totalAmount);
+
+        // 7. 更新订单状态为已支付
+        await runAsync('UPDATE "order" SET status = ?, payment_time = datetime("now", "localtime") WHERE id = ?', ['PAID', orderId]);
+
+        // 提交事务
+        await runAsync('COMMIT');
+        resolve(orderId);
+
+      } catch (error) {
+        // 回滚事务
+        await runAsync('ROLLBACK');
+        reject(error);
       }
-      if (book.status !== 'ON_SALE') {
-        throw new Error(`教材已售出: ${book.title}`);
-      }
-
-      itemStmt.run(
-        orderId,
-        book.id,
-        book.title,
-        book.author,
-        book.isbn,
-        book.cover_image,
-        book.price,
-        1,
-        book.seller_id
-      );
-
-      // 4. 更新教材状态为已售出
-      db.prepare('UPDATE book SET status = ?, stock = 0 WHERE id = ?')
-        .run('SOLD_OUT', book.id);
-      
-      // 5. 给卖家增加余额
-      updateUserBalance(book.seller_id, book.price);
     });
-
-    // 6. 扣除买家余额
-    updateUserBalance(data.userId, -data.totalAmount);
-
-    // 7. 更新订单状态为已支付
-    db.prepare('UPDATE "order" SET status = ?, payment_time = datetime("now", "localtime") WHERE id = ?')
-      .run('PAID', orderId);
-
-    return orderId;
   });
-
-  return transaction(orderData);
 }
 
 /**
  * 获取用户订单列表
  */
-function getUserOrders(userId, status = null) {
+async function getUserOrders(userId, status = null) {
   let sql = `
     SELECT 
       o.*,
@@ -407,20 +464,20 @@ function getUserOrders(userId, status = null) {
   
   sql += ' GROUP BY o.id ORDER BY o.create_time DESC';
   
-  return db.prepare(sql).all(...params);
+  return await allAsync(sql, params);
 }
 
 /**
  * 获取订单详情
  */
-function getOrderById(orderId) {
-  const order = db.prepare(`
+async function getOrderById(orderId) {
+  const order = await getAsync(`
     SELECT * FROM "order" WHERE id = ?
-  `).get(orderId);
+  `, [orderId]);
 
   if (!order) return null;
 
-  const items = db.prepare(`
+  const items = await allAsync(`
     SELECT 
       oi.*,
       u.username AS seller_name,
@@ -428,7 +485,7 @@ function getOrderById(orderId) {
     FROM order_item oi
     LEFT JOIN user u ON oi.seller_id = u.id
     WHERE oi.order_id = ?
-  `).all(orderId);
+  `, [orderId]);
 
   return {
     ...order,
@@ -439,34 +496,45 @@ function getOrderById(orderId) {
 /**
  * 取消订单（恢复余额）
  */
-function cancelOrder(orderId) {
-  const transaction = db.transaction(() => {
-    // 获取订单信息
-    const order = db.prepare('SELECT user_id, total_amount, status FROM "order" WHERE id = ?').get(orderId);
-    
-    if (!order) {
-      throw new Error('订单不存在');
-    }
-    
-    if (order.status !== 'PENDING_PAYMENT') {
-      throw new Error('只有待支付订单才能取消');
-    }
+async function cancelOrder(orderId) {
+  return new Promise((resolve, reject) => {
+    db.serialize(async () => {
+      try {
+        // 开启事务
+        await runAsync('BEGIN TRANSACTION');
 
-    // 1. 更新订单状态
-    db.prepare('UPDATE "order" SET status = ? WHERE id = ?')
-      .run('CANCELLED', orderId);
+        // 获取订单信息
+        const order = await getAsync('SELECT user_id, total_amount, status FROM "order" WHERE id = ?', [orderId]);
+        
+        if (!order) {
+          throw new Error('订单不存在');
+        }
+        
+        if (order.status !== 'PENDING_PAYMENT') {
+          throw new Error('只有待支付订单才能取消');
+        }
 
-    // 2. 恢复教材库存和状态
-    const items = db.prepare('SELECT book_id FROM order_item WHERE order_id = ?')
-      .all(orderId);
-    
-    items.forEach(item => {
-      db.prepare('UPDATE book SET status = ?, stock = 1 WHERE id = ?')
-        .run('ON_SALE', item.book_id);
+        // 1. 更新订单状态
+        await runAsync('UPDATE "order" SET status = ? WHERE id = ?', ['CANCELLED', orderId]);
+
+        // 2. 恢复教材库存和状态
+        const items = await allAsync('SELECT book_id FROM order_item WHERE order_id = ?', [orderId]);
+        
+        for (const item of items) {
+          await runAsync('UPDATE book SET status = ?, stock = 1 WHERE id = ?', ['ON_SALE', item.book_id]);
+        }
+
+        // 提交事务
+        await runAsync('COMMIT');
+        resolve();
+
+      } catch (error) {
+        // 回滚事务
+        await runAsync('ROLLBACK');
+        reject(error);
+      }
     });
   });
-
-  transaction();
 }
 
 // 导出数据库实例和工具函数
