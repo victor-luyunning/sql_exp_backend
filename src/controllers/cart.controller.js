@@ -40,7 +40,7 @@ class CartController {
         return res.json(Response.error(1005, errors.join('; ')));
       }
 
-      return res.json(Response.success(NULL, '所有商品有效，可以结算'));
+      return res.json(Response.success(null, '所有商品有效，可以结算'));
     } catch (error) {
       console.error('验证购物车失败:', error);
       return res.json(Response.error(500, '服务器错误'));
