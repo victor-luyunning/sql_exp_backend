@@ -87,6 +87,20 @@ class AuthController {
     const user = db.prepare('SELECT id, username, email, student_id FROM user WHERE id = ?').get(req.user.userId);
     return res.json(Response.success(user));
   }
+
+  /**
+   * 退出登录
+   */
+  static async logout(req, res) {
+    try {
+      // JWT 是无状态的，退出登录主要由前端清除 token
+      // 后端这里只是返回一个成功的响应
+      return res.json(Response.success(null, '退出登录成功'));
+    } catch (error) {
+      console.error('退出登录失败:', error);
+      return res.json(Response.error(500, '服务器内部错误'));
+    }
+  }
 }
 
 module.exports = AuthController;

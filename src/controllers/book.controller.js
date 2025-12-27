@@ -100,6 +100,58 @@ class BookController {
       return res.json(Response.error(500, '获取详情失败'));
     }
   }
+
+  /**
+   * 获取最新发布的教材
+   */
+  static async getLatestBooks(req, res) {
+    try {
+      const limit = Number(req.query.limit) || 8;
+
+      const sql = `
+        SELECT b.*, u.username as seller_name, u.avatar as seller_avatar
+        FROM book b
+        JOIN user u ON b.seller_id = u.id
+        WHERE b.status = 'ON_SALE'
+        ORDER BY b.create_time DESC
+        LIMIT ?
+      `;
+
+      const books = db.prepare(sql).all(limit);
+      return res.json(Response.success(books));
+    } catch (error) {
+      console.error('获取最新教材失败:', error);
+      return res.json(Response.error(500, '服务器内部错误'));
+    }
+  }
+
+  /**
+   * 获取卖家的其他教材
+   */
+  static async getSellerBooks(req, res) {
+    try {
+      const { sellerId } = req.params;
+      const excludeBookId = Number(req.query.excludeBookId) || 0;
+      const limit = Number(req.query.limit) || 5;
+
+      const sql = `
+        SELECT b.*, u.username as seller_name, u.avatar as seller_avatar
+        FROM book b
+        JOIN user u ON b.seller_id = u.id
+        WHERE b.seller_id = ?
+        AND b.status = 'ON_SALE'
+        AND b.id != ?
+        ORDER BY b.create_time DESC
+        LIMIT ?
+      `;
+
+      const books = db.prepare(sql).all(sellerId, excludeBookId, limit);
+      return res.json(Response.success(books));
+    } catch (error) {
+      console.error('获取卖家教材失败:', error);
+      return res.json(Response.error(500, '服务器内部错误'));
+    }
+  }
 }
 
 module.exports = BookController;
