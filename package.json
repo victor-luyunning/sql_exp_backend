@@ -1,0 +1,27 @@
+{
+  "name": "campus-textbook-backend",
+  "version": "1.0.0",
+  "description": "校园二手教材交易平台后端",
+  "main": "app.js",
+  "scripts": {
+    "test-db": "node test-db.js",
+    "start": "node app.js",
+    "dev": "nodemon app.js"
+  },
+  "keywords": [
+    "textbook",
+    "campus",
+    "marketplace"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "sqlite3": "^5.1.7",
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "jsonwebtoken": "^9.0.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
