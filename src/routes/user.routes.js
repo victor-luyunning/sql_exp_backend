@@ -9,6 +9,7 @@ router.get('/check-username', UserController.checkUsername);
 // --- B. 需要保安检查的接口 (必须带 Token) ---
 router.use(authMiddleware); 
 
+router.get('/me', UserController.getMe);
 router.get('/profile', UserController.getProfile);
 router.put('/update', UserController.updateProfile);
 router.post('/change-password', UserController.changePassword);

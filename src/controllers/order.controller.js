@@ -60,17 +60,155 @@ class OrderController {
   static async getMyOrders(req, res) {
     try {
       const userId = req.user.userId;
-      const orders = db.prepare(`
-        SELECT o.*, oi.book_title, oi.book_author 
-        FROM "order" o
-        JOIN order_item oi ON o.id = oi.order_id
-        WHERE o.user_id = ?
-        ORDER BY o.create_time DESC
-      `).all(userId);
+      const status = req.query.status || '';
+      const pageNum = Number(req.query.pageNum) || 1;
+      const pageSize = Number(req.query.pageSize) || 10;
+      const offset = (pageNum - 1) * pageSize;
+
+      let whereClause = 'WHERE o.user_id = ?';
+      const params = [userId];
       
-      return res.json(Response.success(orders));
+      if (status) {
+        whereClause += ' AND o.status = ?';
+        params.push(status);
+      }
+
+      const sql = `
+        SELECT 
+          o.id, o.order_no, o.total_amount, o.status,
+          o.building, o.room, o.phone, o.payment_type,
+          o.payment_time, o.create_time,
+          GROUP_CONCAT(oi.book_title, ',') as book_titles,
+          COUNT(oi.id) as item_count
+        FROM "order" o
+        LEFT JOIN order_item oi ON o.id = oi.order_id
+        ${whereClause}
+        GROUP BY o.id
+        ORDER BY o.create_time DESC
+        LIMIT ? OFFSET ?
+      `;
+      
+      params.push(pageSize, offset);
+      const orders = db.prepare(sql).all(...params);
+
+      const countSql = `SELECT COUNT(*) as count FROM "order" o ${whereClause}`;
+      const total = db.prepare(countSql).get(...params.slice(0, -2)).count;
+
+      return res.json(Response.success({
+        total, pageNum, pageSize, records: orders
+      }));
     } catch (error) {
+      console.error('获取订单失败:', error);
       return res.json(Response.error(500, '获取订单失败'));
+    }
+  }
+
+  /**
+   * 获取订单详情
+   */
+  static async getOrderDetail(req, res) {
+    try {
+      const userId = req.user.userId;
+      const { orderId } = req.params;
+
+      const order = db.prepare(`
+        SELECT * FROM "order" WHERE id = ? AND user_id = ?
+      `).get(orderId, userId);
+
+      if (!order) {
+        return res.json(Response.error(404, '订单不存在'));
+      }
+
+      const items = db.prepare(`
+        SELECT oi.*, u.username as seller_name, u.phone as seller_phone
+        FROM order_item oi
+        LEFT JOIN user u ON oi.seller_id = u.id
+        WHERE oi.order_id = ?
+      `).all(orderId);
+
+      const orderDetail = {
+        id: order.id,
+        orderNo: order.order_no,
+        totalAmount: order.total_amount,
+        status: order.status,
+        address: {
+          building: order.building,
+          room: order.room,
+          phone: order.phone
+        },
+        payment: {
+          type: order.payment_type,
+          time: order.payment_time
+        },
+        remark: order.remark,
+        createTime: order.create_time,
+        updateTime: order.update_time,
+        items: items.map(item => ({
+          id: item.id,
+          bookId: item.book_id,
+          bookTitle: item.book_title,
+          bookAuthor: item.book_author,
+          bookIsbn: item.book_isbn,
+          bookCover: item.book_cover,
+          price: item.price,
+          quantity: item.quantity,
+          sellerId: item.seller_id,
+          sellerName: item.seller_name,
+          sellerPhone: item.seller_phone
+        }))
+      };
+
+      return res.json(Response.success(orderDetail));
+    } catch (error) {
+      console.error('获取订单详情失败:', error);
+      return res.json(Response.error(500, '服务器内部错误'));
+    }
+  }
+
+  /**
+   * 取消订单
+   */
+  static async cancelOrder(req, res) {
+    try {
+      const userId = req.user.userId;
+      const { orderId } = req.params;
+
+      const order = db.prepare(`
+        SELECT * FROM "order" WHERE id = ? AND user_id = ?
+      `).get(orderId, userId);
+
+      if (!order) {
+        return res.json(Response.error(404, '订单不存在'));
+      }
+
+      if (order.status === 'CANCELLED') {
+        return res.json(Response.error(400, '订单已经取消'));
+      }
+      if (order.status === 'COMPLETED') {
+        return res.json(Response.error(400, '已完成的订单不能取消'));
+      }
+
+      const cancelOrderTx = db.transaction(() => {
+        db.prepare(`
+          UPDATE "order" 
+          SET status = 'CANCELLED', update_time = datetime('now', 'localtime')
+          WHERE id = ?
+        `).run(orderId);
+
+        if (order.status === 'PAID') {
+          const items = db.prepare('SELECT book_id FROM order_item WHERE order_id = ?').all(orderId);
+          const updateBookStmt = db.prepare("UPDATE book SET status = 'ON_SALE' WHERE id = ?");
+          for (const item of items) {
+            updateBookStmt.run(item.book_id);
+          }
+        }
+      });
+
+      cancelOrderTx();
+      return res.json(Response.success(null, '订单已取消'));
+    } catch (error) {
+      console.error('取消订单失败:', error);
+      return res.json(Response.error(500, '服务器内部错误'));
     }
   }
 }

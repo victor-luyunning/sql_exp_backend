@@ -4,7 +4,27 @@ const Response = require('../utils/response.util');
 
 class UserController {
   /**
-   * 1. 检查用户名是否可用 (注册时使用，无需登录)
+   * 1. 获取当前登录用户信息 (/user/me)
+   */
+  static async getMe(req, res) {
+    try {
+      const user = db.prepare(
+        'SELECT id, username, email, student_id, phone, avatar, department, grade, balance, create_time FROM user WHERE id = ?'
+      ).get(req.user.userId);
+      
+      if (!user) {
+        return res.json(Response.error(1004, '用户不存在'));
+      }
+      
+      return res.json(Response.success(user));
+    } catch (error) {
+      console.error('获取用户信息失败:', error);
+      return res.json(Response.error(500, '服务器内部错误'));
+    }
+  }
+
+  /**
+   * 2. 检查用户名是否可用 (注册时使用，无需登录)
    * 访问路径：GET /user/check-username?username=xxx
    */
   static async checkUsername(req, res) {
