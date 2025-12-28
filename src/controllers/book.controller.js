@@ -28,45 +28,70 @@ class BookController {
   static async searchBooks(req, res) {
     try {
       // 1. 获取参数（注意：从 query 拿到的默认是字符串）
-      const { keyword = '' } = req.query;
+      const { keyword = '', condition, minPrice, maxPrice, sortBy } = req.query;
       
       // 2. 强制转换数字，并设置“保底值”
-      // Number() 如果转换失败会返回 NaN，所以我们用 || 确保它至少是个数字
       const pageNum = Number(req.query.pageNum) || 1; 
       const pageSize = Number(req.query.pageSize) || 10;
       
       // 计算跳过的行数
       const offset = (pageNum - 1) * pageSize;
 
-      // 3. 搜索 SQL
+      // 3. 构建搜索条件
+      let conditions = ["b.status = 'ON_SALE'"];
+      let params = [];
+      
+      // 关键词搜索
+      if (keyword) {
+        conditions.push('(b.title LIKE ? OR b.author LIKE ? OR b.isbn LIKE ?)');
+        const searchPattern = `%${keyword}%`;
+        params.push(searchPattern, searchPattern, searchPattern);
+      }
+      
+      // 成色筛选
+      if (condition) {
+        conditions.push('b.condition = ?');
+        params.push(condition);
+      }
+      
+      // 价格范围
+      if (minPrice) {
+        conditions.push('b.price >= ?');
+        params.push(Number(minPrice));
+      }
+      if (maxPrice) {
+        conditions.push('b.price <= ?');
+        params.push(Number(maxPrice));
+      }
+      
+      // 4. 构建排序
+      let orderBy = 'b.create_time DESC'; // 默认按时间
+      if (sortBy === 'price_asc') {
+        orderBy = 'b.price ASC';
+      } else if (sortBy === 'price_desc') {
+        orderBy = 'b.price DESC';
+      } else if (sortBy === 'latest') {
+        orderBy = 'b.create_time DESC';
+      }
+      
+      // 5. 执行查询 - 添加 seller_avatar
       const sql = `
-        SELECT b.*, u.username as seller_name 
+        SELECT b.*, u.username as seller_name, u.avatar as seller_avatar
         FROM book b
         JOIN user u ON b.seller_id = u.id
-        WHERE b.status = 'ON_SALE' 
-        AND (b.title LIKE ? OR b.author LIKE ? OR b.isbn LIKE ?)
-        ORDER BY b.create_time DESC
+        WHERE ${conditions.join(' AND ')}
+        ORDER BY ${orderBy}
         LIMIT ? OFFSET ?
       `;
-
-      const searchPattern = `%${keyword}%`;
       
-      // 执行查询
-      // 确保传给 prepare().all() 的最后两个参数是 pageNum 算出来的数字
-      const books = db.prepare(sql).all(
-        searchPattern, 
-        searchPattern, 
-        searchPattern, 
-        pageSize,  // 对应第一个 LIMIT ?
-        offset     // 对应第二个 OFFSET ?
-      );
+      const books = db.prepare(sql).all(...params, pageSize, offset);
 
-      // 4. 获取总数
-      const totalCount = db.prepare(`
-        SELECT COUNT(*) as count FROM book 
-        WHERE status = 'ON_SALE' 
-        AND (title LIKE ? OR author LIKE ? OR isbn LIKE ?)
-      `).get(searchPattern, searchPattern, searchPattern).count;
+      // 6. 获取总数
+      const countSql = `
+        SELECT COUNT(*) as count FROM book b
+        WHERE ${conditions.join(' AND ')}
+      `;
+      const totalCount = db.prepare(countSql).get(...params).count;
 
       return res.json(Response.success({
         total: totalCount,

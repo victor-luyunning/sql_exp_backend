@@ -5,15 +5,37 @@ const db = require('../src/config/database.config');
 console.log('🔧 开始升级数据库表结构...\n');
 
 try {
-  // 检查 book 表的所有列
-  const columns = db.prepare("PRAGMA table_info(book)").all();
-  const columnNames = columns.map(col => col.name);
+  // ========== 升级 user 表 ==========
+  console.log('📋 检查 user 表...');
+  const userColumns = db.prepare("PRAGMA table_info(user)").all();
+  const userColumnNames = userColumns.map(col => col.name);
   
-  console.log('当前 book 表的字段:', columnNames.join(', '));
+  const userFieldsToAdd = [
+    { name: 'major', sql: 'ALTER TABLE user ADD COLUMN major TEXT' },
+  ];
+  
+  let userAddedCount = 0;
+  for (const field of userFieldsToAdd) {
+    if (!userColumnNames.includes(field.name)) {
+      console.log(`  ➕ 添加字段: ${field.name}`);
+      db.prepare(field.sql).run();
+      userAddedCount++;
+    }
+  }
+  
+  if (userAddedCount === 0) {
+    console.log('  ✅ user 表已是最新');
+  } else {
+    console.log(`  ✅ user 表已添加 ${userAddedCount} 个字段`);
+  }
   console.log('');
   
-  // 需要添加的字段列表
-  const fieldsToAdd = [
+  // ========== 升级 book 表 ==========
+  console.log('📋 检查 book 表...');
+  const bookColumns = db.prepare("PRAGMA table_info(book)").all();
+  const bookColumnNames = bookColumns.map(col => col.name);
+  
+  const bookFieldsToAdd = [
     { name: 'title_en', sql: 'ALTER TABLE book ADD COLUMN title_en TEXT' },
     { name: 'isbn10', sql: 'ALTER TABLE book ADD COLUMN isbn10 TEXT' },
     { name: 'cover_image', sql: 'ALTER TABLE book ADD COLUMN cover_image TEXT' },
@@ -29,25 +51,22 @@ try {
     { name: 'view_count', sql: 'ALTER TABLE book ADD COLUMN view_count INTEGER NOT NULL DEFAULT 0' },
   ];
   
-  let addedCount = 0;
-  
-  for (const field of fieldsToAdd) {
-    if (!columnNames.includes(field.name)) {
-      console.log(`➕ 添加字段: ${field.name}`);
+  let bookAddedCount = 0;
+  for (const field of bookFieldsToAdd) {
+    if (!bookColumnNames.includes(field.name)) {
+      console.log(`  ➕ 添加字段: ${field.name}`);
       db.prepare(field.sql).run();
-      addedCount++;
+      bookAddedCount++;
     }
   }
   
-  if (addedCount === 0) {
-    console.log('✅ 表结构已是最新，无需升级');
+  if (bookAddedCount === 0) {
+    console.log('  ✅ book 表已是最新');
   } else {
-    console.log(`\n✅ 已添加 ${addedCount} 个字段`);
+    console.log(`  ✅ book 表已添加 ${bookAddedCount} 个字段`);
   }
   
-  // 再次检查
-  const newColumns = db.prepare("PRAGMA table_info(book)").all();
-  console.log(`\n📊 当前 book 表共有 ${newColumns.length} 个字段`);
+  console.log('\n✨ 数据库升级完成！');
   
 } catch (error) {
   console.error('❌ 升级失败:', error);

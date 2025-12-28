@@ -9,7 +9,7 @@ class UserController {
   static async getMe(req, res) {
     try {
       const user = db.prepare(
-        'SELECT id, username, email, student_id, phone, avatar, department, grade, balance, create_time FROM user WHERE id = ?'
+        'SELECT id, username, email, student_id, phone, avatar, department, major, grade, balance, default_dormitory, default_room_number, campus_card_number, create_time FROM user WHERE id = ?'
       ).get(req.user.userId);
       
       if (!user) {
@@ -61,7 +61,7 @@ class UserController {
   static async updateProfile(req, res) {
     try {
       const userId = req.user.userId;
-      const { email, studentId, phone, avatar, department, grade } = req.body;
+      const { email, studentId, phone, avatar, department, major, grade, defaultDormitory, defaultRoomNumber, campusCardNumber } = req.body;
 
       // 1. 检查用户是否存在
       const user = db.prepare('SELECT id FROM user WHERE id = ?').get(userId);
@@ -93,9 +93,25 @@ class UserController {
         updateFields.push('department = ?');
         updateValues.push(department);
       }
+      if (major !== undefined) {
+        updateFields.push('major = ?');
+        updateValues.push(major);
+      }
       if (grade !== undefined) {
         updateFields.push('grade = ?');
         updateValues.push(grade);
+      }
+      if (defaultDormitory !== undefined) {
+        updateFields.push('default_dormitory = ?');
+        updateValues.push(defaultDormitory);
+      }
+      if (defaultRoomNumber !== undefined) {
+        updateFields.push('default_room_number = ?');
+        updateValues.push(defaultRoomNumber);
+      }
+      if (campusCardNumber !== undefined) {
+        updateFields.push('campus_card_number = ?');
+        updateValues.push(campusCardNumber);
       }
 
       // 如果没有任何字段需要更新
@@ -115,7 +131,7 @@ class UserController {
 
       // 4. 返回更新后的用户信息
       const updatedUser = db.prepare(
-        'SELECT id, username, email, student_id, phone, avatar, department, grade FROM user WHERE id = ?'
+        'SELECT id, username, email, student_id, phone, avatar, department, major, grade, default_dormitory, default_room_number, campus_card_number FROM user WHERE id = ?'
       ).get(userId);
 
       return res.json(Response.success(updatedUser, '用户信息更新成功'));

@@ -53,14 +53,36 @@ class CartController {
   static async getCartItems(req, res) {
     try {
       const { items } = req.body; // 同样适配截图格式
-      if (!items || items.length === 0) return res.json(Response.success([]));
+      if (!items || items.length === 0) {
+        return res.json(Response.success({ items: [] }));
+      }
 
       const ids = items.map(item => item.bookId);
       const placeholders = ids.map(() => '?').join(',');
-      const books = db.prepare(`SELECT * FROM book WHERE id IN (${placeholders})`).all(...ids);
+      
+      // 查询书籍信息，包括卖家信息
+      const sql = `
+        SELECT b.*, u.username as seller_name, u.avatar as seller_avatar
+        FROM book b
+        JOIN user u ON b.seller_id = u.id
+        WHERE b.id IN (${placeholders})
+      `;
+      const books = db.prepare(sql).all(...ids);
 
-      return res.json(Response.success(books));
+      // 合并数量信息
+      const result = books.map(book => {
+        const cartItem = items.find(item => item.bookId === book.id);
+        return {
+          ...book,
+          bookId: book.id, // 添加 bookId 字段以便前端使用
+          quantity: cartItem ? cartItem.quantity : 1,
+          cover_image: book.cover_image || '' // 确保封面字段存在
+        };
+      });
+
+      return res.json(Response.success({ items: result }));
     } catch (error) {
+      console.error('获取购物车详情失败:', error);
       return res.json(Response.error(500, '服务器错误'));
     }
   }
