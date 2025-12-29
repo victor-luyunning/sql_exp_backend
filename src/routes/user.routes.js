@@ -13,5 +13,6 @@ router.get('/me', UserController.getMe);
 router.get('/profile', UserController.getProfile);
 router.put('/profile', UserController.updateProfile);
 router.post('/change-password', UserController.changePassword);
+router.post('/recharge', UserController.recharge);
 
 module.exports = router;

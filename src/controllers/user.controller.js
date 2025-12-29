@@ -165,6 +165,37 @@ class UserController {
       return res.json(Response.error(500, '服务器内部错误: ' + error.message));
     }
   }
+
+  /**
+   * 5. 充值 (需登录)
+   */
+  static async recharge(req, res) {
+    try {
+      const userId = req.user.userId;
+      const { amount } = req.body;
+
+      // 验证充值金额
+      if (!amount || amount <= 0) {
+        return res.json(Response.error(400, '充值金额必须大于0'));
+      }
+
+      // 检查用户是否存在
+      const user = db.prepare('SELECT id, balance FROM user WHERE id = ?').get(userId);
+      if (!user) {
+        return res.json(Response.error(1004, '用户不存在'));
+      }
+
+      // 更新余额
+      const newBalance = user.balance + parseFloat(amount);
+      db.prepare('UPDATE user SET balance = ? WHERE id = ?').run(newBalance, userId);
+
+      // 返回新的余额
+      return res.json(Response.success({ balance: newBalance }, '充值成功'));
+    } catch (error) {
+      console.error('充值失败:', error);
+      return res.json(Response.error(500, '服务器内部错误: ' + error.message));
+    }
+  }
 }
 
 module.exports = UserController;
